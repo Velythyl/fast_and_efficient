@@ -142,7 +142,7 @@ class LocomotionController(object):
           desired_speed=desired_speed,
           desired_twisting_speed=desired_twisting_speed,
           desired_height=self._robot.mpc_body_height,
-          foot_landing_clearance=0.01,
+          foot_landing_clearance=0.1,
           foot_height=0.1,
           use_raibert_heuristic=True)
 

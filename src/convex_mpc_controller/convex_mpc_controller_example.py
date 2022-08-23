@@ -1,4 +1,5 @@
 """Example of MPC controller on A1 robot."""
+import numpy as np
 from absl import app
 from absl import flags
 
@@ -23,7 +24,23 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
                                slope=slope_world.SlopeWorld,
                                stair=stair_world.StairWorld,
                                uneven=uneven_world.UnevenWorld)
+class Record:
+    def __init__(self, name):
+        self.name = name
+        self.record_angles = []
+        self.record_timesteps = []
+    def record(self, controller, timestep):
+        angles = controller._robot.motor_angles()
+        record_angles.append(angles)
+        record_timesteps.append(timestep)
 
+    def save_record(self):
+        global record_angles
+        global record_timesteps
+        np_record_angles = np.array(record_angles)
+        np_record_timesteps = np.array(record_timesteps)
+        np.save(f"{self.name}_angles.npy", np_record_angles)
+        np.save(f"{self.name}_timesteps.npy", np_record_timesteps)
 
 def _update_controller(controller):
   # Update speed
@@ -32,7 +49,7 @@ def _update_controller(controller):
   # Update controller moce
   controller.set_controller_mode(ControllerMode.WALK)
   # Update gait
-  controller.set_gait(GaitType.TROT)
+  controller.set_gait(GaitType.FLYTROT)
 
 
 def main(argv):
@@ -45,16 +62,23 @@ def main(argv):
   try:
     start_time = controller.time_since_reset
     current_time = start_time
+
+    record = Record("full")
+
     while current_time - start_time < FLAGS.max_time_secs:
+      record.record(controller, current_time)
       current_time = controller.time_since_reset
       time.sleep(0.05)
       _update_controller(controller)
       if not controller.is_safe:
         break
 
+    record.save_record()
   finally:
     controller.set_controller_mode(
         locomotion_controller.ControllerMode.TERMINATE)
+
+
 
 
 if __name__ == "__main__":
