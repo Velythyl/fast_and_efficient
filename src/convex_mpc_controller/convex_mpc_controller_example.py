@@ -30,15 +30,15 @@ class Record:
         self.record_angles = []
         self.record_timesteps = []
     def record(self, controller, timestep):
-        angles = controller._robot.motor_angles()
-        record_angles.append(angles)
-        record_timesteps.append(timestep)
+        angles = controller._robot.motor_angles
+        self.record_angles.append(angles)
+        self.record_timesteps.append(timestep)
 
     def save_record(self):
         global record_angles
         global record_timesteps
-        np_record_angles = np.array(record_angles)
-        np_record_timesteps = np.array(record_timesteps)
+        np_record_angles = np.array(self.record_angles)
+        np_record_timesteps = np.array(self.record_timesteps)
         np.save(f"{self.name}_angles.npy", np_record_angles)
         np.save(f"{self.name}_timesteps.npy", np_record_timesteps)
 
