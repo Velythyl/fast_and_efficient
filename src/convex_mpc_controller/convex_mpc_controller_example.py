@@ -51,16 +51,16 @@ class Record:
         self.record_states = []
         self.record_timesteps = []
         self.has_perturbed = not perturb
-    
+
     def wack_with_stick(self, controller, force_mean, force_var):
         force = np.random.normal(force_mean, force_var)
         # robot unique ID is 1
         p = controller.pybullet_client
-        p.applyExternalForce(1, -1, force, (0,0,0), p.LINK_FRAME)
+        p.applyExternalForce(1, -1, force, (0, 0, 0), p.LINK_FRAME)
 
     def record(self, controller, timestep):
         if not self.has_perturbed:
-            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(1, 1, 1))
+            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(1000, 1000, 1000))
         pos = controller._robot.base_position
         rot = controller._robot.base_orientation_quat
         conv_pos = np.array([pos[0], pos[1], pos[2]])
@@ -72,40 +72,15 @@ class Record:
     def save_record(self):
         global record_angles
         global record_timesteps
-        # np_record_angles = np.array(self.record_angles)
-        # np_record_timesteps = np.array(self.record_timesteps)
-        # np.save(f"{self.name}_angles.npy", np_record_angles)
-        # np.save(f"{self.name}_timesteps.npy", np_record_timesteps)
-        with open(f"{self.name}_angles.txt", "w") as fp:
-
-            fp.write(
-                """
-{
-    "LoopMode": "Wrap",
-    "FrameDuration": 0.01667,
-    "EnableCycleOffsetPosition": true,
-    "EnableCycleOffsetRotation": false,
-
-    "Frames":
-    [
-"""
-            )
-            root_x, root_y = self.record_states[0][:2]
-            for row in self.record_states:
-                fp.write("        [ {:6.5f}, {:6.5f},".format(row[0]-root_x, row[1]-root_y))
-                s = ""
-                for val in row[2:]:
-                    s = s + " {:6.5f},".format(val)
-                fp.write(s + "],\n")
-            fp.write(
-                """    ]
-}
-""")
+        np_record_states = np.array(self.record_states)
+        np_record_timesteps = np.array(self.record_timesteps)
+        np.save(f"{self.name}_states.npy", np_record_states)
+        np.save(f"{self.name}_timesteps.npy", np_record_timesteps)
 
 
 def _update_controller(controller):
     # Update speed
-    lin_speed, rot_speed = [0.0, 0.0], 0.3
+    lin_speed, rot_speed = [0.3, 0.0], 0.0
     controller.set_desired_speed(lin_speed, rot_speed)
     # Update controller moce
     controller.set_controller_mode(ControllerMode.WALK)
