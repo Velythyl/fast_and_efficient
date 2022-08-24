@@ -55,7 +55,7 @@ class Record:
         pos = controller._robot.base_position
         rot = controller._robot.base_orientation_quat
         conv_pos = np.array([pos[0], pos[1], pos[2]])
-        conv_rot = np.array([rot[3], rot[0], -rot[2], rot[1]])
+        conv_rot = np.array([rot[3], rot[0], rot[1], rot[2]])
         state = np.hstack([conv_pos, conv_rot, controller._robot.motor_angles])
         self.record_states.append(state)
         self.record_timesteps.append(timestep)
@@ -96,7 +96,7 @@ class Record:
 
 def _update_controller(controller):
     # Update speed
-    lin_speed, rot_speed = [0.3, 0.], 0.
+    lin_speed, rot_speed = [0.0, 0.0], 0.3
     controller.set_desired_speed(lin_speed, rot_speed)
     # Update controller moce
     controller.set_controller_mode(ControllerMode.WALK)
@@ -117,7 +117,7 @@ def main(argv):
 
         record = Record("full")
 
-        while current_time - start_time < FLAGS.max_time_secs:
+        while current_time - start_time < FLAGS.max_time_secs + 5:
             record.record(controller, current_time)
             current_time = controller.time_since_reset
             time.sleep(0.05)
