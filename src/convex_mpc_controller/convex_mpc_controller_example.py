@@ -46,10 +46,11 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
 
 
 class Record:
-    def __init__(self, name):
+    def __init__(self, name, perturb=True):
         self.name = name
         self.record_states = []
         self.record_timesteps = []
+        self.has_perturbed = not perturb
     
     def wack_with_stick(self, controller, force_mean, force_var):
         force = np.random.normal(force_mean, force_var)
@@ -58,7 +59,8 @@ class Record:
         p.applyExternalForce(1, -1, force, (0,0,0), p.LINK_FRAME)
 
     def record(self, controller, timestep):
-        self.wack_with_stick(controller, (0, 0, 0), (1, 1, 1))
+        if not self.has_perturbed:
+            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(1, 1, 1))
         pos = controller._robot.base_position
         rot = controller._robot.base_orientation_quat
         conv_pos = np.array([pos[0], pos[1], pos[2]])
