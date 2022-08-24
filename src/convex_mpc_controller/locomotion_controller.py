@@ -40,7 +40,7 @@ class GaitType(enum.Enum):
 
 def get_sim_conf():
     config = ml_collections.ConfigDict()
-    config.timestep: float = 0.002
+    config.timestep: float = 0.02 / 100.0  # isaacgym uses 0.005 * 4
     config.action_repeat: int = 1
     config.reset_time_s: float = 3.
     config.num_solver_iterations: int = 30
@@ -48,6 +48,45 @@ def get_sim_conf():
     config.init_rack_position: Tuple[float, float, float] = [0., 0., 1]
     config.on_rack: bool = False
     return config
+
+
+class Record:
+    def __init__(self, name, perturb=True):
+        self.name = name
+        self.record_states = []
+        self.record_timesteps = []
+        self.record_count = 0
+        self.stick_count = 0
+
+    def wack_with_stick(self, controller, force_mean, force_var):
+        print("Wack!")
+        force = np.random.normal(force_mean, force_var)
+        # robot unique ID is 1
+        p = controller.pybullet_client
+        p.applyExternalForce(1, -1, force, (0, 0, 0), p.LINK_FRAME)
+
+    def record(self, controller, timestep):
+        pos = controller._robot.base_position
+        rot = controller._robot.base_orientation_quat
+        conv_pos = np.array([pos[0], pos[1], pos[2]])
+        conv_rot = np.array([rot[3], rot[0], rot[1], rot[2]])
+        state = np.hstack([conv_pos, conv_rot, controller._robot.motor_angles])
+        self.record_states.append(state)
+        self.record_timesteps.append(timestep)
+        if timestep and not int(timestep / controller._conf.timestep) % 5000:
+            self.save_record()
+            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(75000, 75000, 100))
+
+    def save_record(self):
+        global record_angles
+        global record_timesteps
+        np_record_states = np.array(self.record_states)
+        np_record_timesteps = np.array(self.record_timesteps)
+        np.save(f"{self.name}_states_{self.record_count}.npy", np_record_states)
+        np.save(f"{self.name}_timesteps_{self.record_count}.npy", np_record_timesteps)
+        self.record_count += 1
+        self.record_states = []
+        self.record_timesteps = []
 
 
 class LocomotionController(object):
@@ -86,6 +125,8 @@ class LocomotionController(object):
         self._logs = []
         self._logdir = logdir
 
+        self._recorder = Record("full")
+
         self._mode = ControllerMode.DOWN
         self.set_controller_mode(ControllerMode.STAND)
         self._gait = None
@@ -104,11 +145,11 @@ class LocomotionController(object):
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
         p.setAdditionalSearchPath('src/data')
 
-        conf = get_sim_conf()
+        self._conf = get_sim_conf()
 
         self.pybullet_client = p
         p.setPhysicsEngineParameter(numSolverIterations=30)
-        p.setTimeStep(0.002)
+        p.setTimeStep(self._conf.timestep)
         p.setGravity(0, 0, -9.8)
         p.setPhysicsEngineParameter(enableConeFriction=0)
         world = self._world_class(self.pybullet_client)
@@ -118,11 +159,11 @@ class LocomotionController(object):
         if self._use_real_robot:
             self._robot = a1_robot.A1Robot(
                 pybullet_client=p,
-                sim_conf=conf,
+                sim_conf=self._conf,
                 motor_control_mode=MotorControlMode.HYBRID)
         else:
             self._robot = a1.A1(pybullet_client=p,
-                                sim_conf=conf,
+                                sim_conf=self._conf,
                                 motor_control_mode=MotorControlMode.HYBRID)
 
         if self._show_gui and not self._use_real_robot:
@@ -311,6 +352,8 @@ class LocomotionController(object):
 
     def run(self):
         logging.info("Low level thread started...")
+        current_time = 0
+
         while True:
             self._handle_mode_switch()
             self._handle_gait_switch()
@@ -325,6 +368,9 @@ class LocomotionController(object):
                 action, qp_sol = self.get_action()
                 self._robot.step(action)
                 self._update_logging(action, qp_sol)
+
+                self._recorder.record(self, current_time)
+
             else:
                 logging.info("Running loop terminated, exiting...")
                 break
@@ -337,6 +383,7 @@ class LocomotionController(object):
                     cameraPitch=-30,
                     cameraTargetPosition=self._robot.base_position,
                 )
+            current_time += self._conf.timestep
 
     def set_controller_mode(self, mode):
         self._desired_mode = mode

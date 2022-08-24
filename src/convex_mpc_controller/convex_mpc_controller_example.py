@@ -45,39 +45,6 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
 # ~
 
 
-class Record:
-    def __init__(self, name, perturb=True):
-        self.name = name
-        self.record_states = []
-        self.record_timesteps = []
-        self.has_perturbed = not perturb
-
-    def wack_with_stick(self, controller, force_mean, force_var):
-        force = np.random.normal(force_mean, force_var)
-        # robot unique ID is 1
-        p = controller.pybullet_client
-        p.applyExternalForce(1, -1, force, (0, 0, 0), p.LINK_FRAME)
-
-    def record(self, controller, timestep):
-        if not self.has_perturbed:
-            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(1000, 1000, 1000))
-        pos = controller._robot.base_position
-        rot = controller._robot.base_orientation_quat
-        conv_pos = np.array([pos[0], pos[1], pos[2]])
-        conv_rot = np.array([rot[3], rot[0], rot[1], rot[2]])
-        state = np.hstack([conv_pos, conv_rot, controller._robot.motor_angles])
-        self.record_states.append(state)
-        self.record_timesteps.append(timestep)
-
-    def save_record(self):
-        global record_angles
-        global record_timesteps
-        np_record_states = np.array(self.record_states)
-        np_record_timesteps = np.array(self.record_timesteps)
-        np.save(f"{self.name}_states.npy", np_record_states)
-        np.save(f"{self.name}_timesteps.npy", np_record_timesteps)
-
-
 def _update_controller(controller):
     # Update speed
     lin_speed, rot_speed = [0.3, 0.0], 0.0
@@ -96,20 +63,18 @@ def main(argv):
         world_class=WORLD_NAME_TO_CLASS_MAP[FLAGS.world])
 
     try:
-        start_time = controller.time_since_reset
+        start_time = 0  # controller.time_since_reset
         current_time = start_time
 
-        record = Record("full")
-
-        while current_time - start_time < FLAGS.max_time_secs + 5:
-            record.record(controller, current_time)
+        while current_time - start_time < FLAGS.max_time_secs + 10:
             current_time = controller.time_since_reset
             time.sleep(0.05)
             _update_controller(controller)
             if not controller.is_safe:
                 break
 
-        record.save_record()
+        controller._recorder.save_record()
+
     finally:
         controller.set_controller_mode(
             locomotion_controller.ControllerMode.TERMINATE)
