@@ -95,10 +95,10 @@ class LocomotionController(object):
 
   def _setup_robot_and_controllers(self):
     # Construct robot
-    if self._show_gui and not self._use_real_robot:
-      p = bullet_client.BulletClient(connection_mode=pybullet.GUI)
-    else:
-      p = bullet_client.BulletClient(connection_mode=pybullet.DIRECT)
+    #if self._show_gui and not self._use_real_robot:
+    #  p = bullet_client.BulletClient(connection_mode=pybullet.GUI)
+    #else:
+    p = bullet_client.BulletClient(connection_mode=pybullet.DIRECT)
 
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
     p.setAdditionalSearchPath('src/data')

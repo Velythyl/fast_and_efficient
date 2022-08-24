@@ -50,8 +50,15 @@ class Record:
         self.name = name
         self.record_states = []
         self.record_timesteps = []
+    
+    def wack_with_stick(self, controller, force_mean, force_var):
+        force = np.random.normal(force_mean, force_var)
+        # robot unique ID is 1
+        p = controller.pybullet_client
+        p.applyExternalForce(1, -1, force, (0,0,0), p.LINK_FRAME)
 
     def record(self, controller, timestep):
+        self.wack_with_stick(controller, (0, 0, 0), (1, 1, 1))
         pos = controller._robot.base_position
         rot = controller._robot.base_orientation_quat
         conv_pos = np.array([pos[0], pos[1], pos[2]])
