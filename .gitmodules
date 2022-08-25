@@ -1,0 +1,3 @@
+[submodule "potential_planner"]
+	path = potential_planner
+	url = https://github.com/Velythyl/simple-attractor-and-repulsor.git

@@ -1,4 +1,5 @@
 """Example of MPC controller on A1 robot."""
+from potential_planner import Planner
 from threading import Lock
 import numpy as np
 from absl import app
@@ -26,7 +27,7 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
                                stair=stair_world.StairWorld,
                                uneven=uneven_world.UnevenWorld)
 
-
+'''
 class Planner:
     def __init__(self, pos, goal, tolerance=0.5) -> None:
         self.goal = np.array(goal).reshape([2, 1])
@@ -41,7 +42,8 @@ class Planner:
 
     def get_command(self, pos):
         self.pos = pos
-        return np.array([0.3, 0]).reshape([2, 1])
+        return [0, 0, 0]
+'''
 
 
 class Fixer:
@@ -111,9 +113,8 @@ def main(argv):
     del argv  # unused
 
     # Dummy state estimator and planner
-    state_estimator = StateEstimator()
-    planner = Planner(pos=[0, 0], goal=[1, 1])
-    fixer = Fixer()
+    state_estimator = StateEstimator(controller._conf.timestep)
+    planner = Planner(0.2)
 
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
@@ -124,9 +125,14 @@ def main(argv):
     try:
         current_time = time.time()
         last_time = current_time
-        at_goal = False
+        current_p = state_estimator.get_pos()
 
-        while not planner.at_goal():
+        def is_done(self, goal, robot_pose, delta):
+            dist = np.linalg.norm(robot_pose - goal)
+            done = (dist < delta).all()
+            return done
+
+        while not is_done(goal, current_p, 0.001):
             # update time
             current_time = time.time()
             dt = current_time - last_time
@@ -137,11 +143,8 @@ def main(argv):
             current_p = state_estimator.get_pos()
 
             v = planner.get_command(current_p)
-            v = state_estimator.world2robot(current_o, v)
-            o = fixer.get_fix(current_o, dt)
-
-            print(current_o, o)
-
+            o = Fixer.get_fix(current_o=current_o, dt=dt)
+            v = state_estimator.world2robot(o, v)
             command = [v[0], v[1], o]
             _update_controller(controller, command)
 
