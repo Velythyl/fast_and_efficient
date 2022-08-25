@@ -48,13 +48,23 @@ class StateEstimator:
         self.pos = np.array(pos).reshape([2, 1])
         self.mutex = Lock()
 
-    def update(self, orientation, v, dt=0.02):
-        # rotate from the current orientation to the world frame (which should
-        # correspond to the initialization direction)
+    def robot2world(orientation, v, dt):
         Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
                         [np.sin(orientation),  np.cos(orientation)]
                         ])
-        v_world = Rwb @ v[:2].reshape([2, 1]) * dt
+        return Rwb @ v[:2].reshape([2, 1]) * dt
+    
+    def world2robot(orientation, v, dt=1.):
+        Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
+                        [np.sin(orientation),  np.cos(orientation)]
+                        ])
+        return Rwb.T @ v[:2].reshape([2, 1]) * dt
+        
+
+    def update(self, orientation, v, dt=0.02):
+        # rotate from the current orientation to the world frame (which should
+        # correspond to the initialization direction)
+        v_world = self.robot2world(orientation, v, dt)
 
         self.mutex.acquire()
         try:
@@ -101,6 +111,7 @@ def main(argv):
         while not planner.at_goal():
             current_time = controller.time_since_reset
             command = planner.get_command(state_estimator.get_pos())
+            command = state_estimator.world2robot(orientation, command)
             _update_controller(controller, command)
 
             if not controller.is_safe:
