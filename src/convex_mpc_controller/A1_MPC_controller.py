@@ -27,24 +27,6 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
                                stair=stair_world.StairWorld,
                                uneven=uneven_world.UnevenWorld)
 
-'''
-class Planner:
-    def __init__(self, pos, goal, tolerance=0.5) -> None:
-        self.goal = np.array(goal).reshape([2, 1])
-        self.tolerance = tolerance
-        self.pos = pos
-
-    def at_goal(self):
-        dist = np.linalg.norm(self.goal - self.pos)
-        if dist < self.tolerance:
-            return True
-        return False
-
-    def get_command(self, pos):
-        self.pos = pos
-        return [0, 0, 0]
-'''
-
 
 class Fixer:
     def __init__(self) -> None:
@@ -67,6 +49,7 @@ class StateEstimator:
     def __init__(self, pos=[0, 0]) -> None:
         self.pos = np.array(pos).astype(float) .reshape([2, 1])
         self.mutex = Lock()
+        self.v = np.array([0.0, 0.0]).reshape([2, 1])
 
     def robot2world(self, orientation, v, dt=1.):
         Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
@@ -80,10 +63,13 @@ class StateEstimator:
                         ])
         return Rwb.T @ np.array(v[: 2]).reshape([2, 1]) * dt
 
-    def update(self, orientation, v, dt=0.02):
-        # rotate from the current orientation to the world frame (which should
-        # correspond to the initialization direction)
-        v_world = self.robot2world(orientation, v, dt)
+    def update(self, orientation, a, dt=0.02):
+        dv = np.array(a[:2]).reshape(2, 1) * dt
+
+        # get the current velocity in the world frame, then update the internal
+        # state based on the acceleration
+        v_world = self.robot2world(orientation, self.v, dt)
+        self.v += dv
 
         self.mutex.acquire()
         try:
