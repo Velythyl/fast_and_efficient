@@ -40,7 +40,7 @@ class GaitType(enum.Enum):
 
 def get_sim_conf():
     config = ml_collections.ConfigDict()
-    config.timestep: float = 0.02 / 100.0  # isaacgym uses 0.005 * 4
+    config.timestep: float = 0.02 / 10.0  # isaacgym uses 0.005 * 4
     config.action_repeat: int = 1
     config.reset_time_s: float = 3.
     config.num_solver_iterations: int = 30
@@ -73,9 +73,9 @@ class Record:
         state = np.hstack([conv_pos, conv_rot, controller._robot.motor_angles])
         self.record_states.append(state)
         self.record_timesteps.append(timestep)
-        if timestep and not int(timestep / controller._conf.timestep) % 5000:
+        if timestep and not int(timestep / controller._conf.timestep) % 1000:
             self.save_record()
-            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(75000, 75000, 100))
+            self.wack_with_stick(controller, force_mean=(0, 0, 0), force_var=(5000, 5000, 100))
 
     def save_record(self):
         global record_angles
@@ -102,7 +102,8 @@ class LocomotionController(object):
             use_real_robot: bool = False,
             show_gui: bool = False,
             logdir: str = 'logs/',
-            world_class: abstract_world.AbstractWorld = plane_world.PlaneWorld):
+            world_class: abstract_world.AbstractWorld = plane_world.PlaneWorld,
+            pos_estimator=None):
         """Initializes the class.
 
         Args:
@@ -117,6 +118,8 @@ class LocomotionController(object):
         self._use_real_robot = use_real_robot
         self._show_gui = show_gui
         self._world_class = world_class
+        self._pos_estimator = pos_estimator
+
         self._setup_robot_and_controllers()
         self.reset_robot()
         self.reset_controllers()
@@ -125,7 +128,10 @@ class LocomotionController(object):
         self._logs = []
         self._logdir = logdir
 
-        self._recorder = Record("full")
+        if not use_real_robot:
+            self._recorder = Record("Left")
+        else:
+            self._recorder = None
 
         self._mode = ControllerMode.DOWN
         self.set_controller_mode(ControllerMode.STAND)
@@ -352,7 +358,7 @@ class LocomotionController(object):
 
     def run(self):
         logging.info("Low level thread started...")
-        current_time = 0
+        interval_start_time = time.time()
 
         while True:
             self._handle_mode_switch()
@@ -363,17 +369,29 @@ class LocomotionController(object):
             elif self._mode == ControllerMode.STAND:
                 action = self._get_stand_action()
                 self._robot.step(action)
-                time.sleep(0.001)
             elif self._mode == ControllerMode.WALK:
                 action, qp_sol = self.get_action()
                 self._robot.step(action)
                 self._update_logging(action, qp_sol)
-
-                self._recorder.record(self, current_time)
-
             else:
                 logging.info("Running loop terminated, exiting...")
                 break
+
+            # add a brief sleep so we don't spin too fast
+            time.sleep(self._conf.timestep)
+
+            # calculate the interval length
+            now = time.time()
+            dt = now - interval_start_time
+            interval_start_time = now
+
+            # update state estimate
+            if self._pos_estimator is not None:
+                self._pos_estimator.update(self._robot.base_orientation_rpy(), self._robot.base_velocity(), dt)
+
+            # store our joint information
+            if self._recorder is not None:
+                self._recorder.record(self, interval_start_time - now)
 
             # Camera setup:
             if self._show_gui:
@@ -383,7 +401,6 @@ class LocomotionController(object):
                     cameraPitch=-30,
                     cameraTargetPosition=self._robot.base_position,
                 )
-            current_time += self._conf.timestep
 
     def set_controller_mode(self, mode):
         self._desired_mode = mode

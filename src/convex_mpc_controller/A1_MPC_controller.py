@@ -1,4 +1,5 @@
 """Example of MPC controller on A1 robot."""
+from threading import Lock
 import numpy as np
 from absl import app
 from absl import flags
@@ -25,29 +26,53 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
                                stair=stair_world.StairWorld,
                                uneven=uneven_world.UnevenWorld)
 
-#  inline CVector3 BulletToSimulator(const btVector3& c_bt_vector) {
-#     return CVector3(c_bt_vector.getX(), -c_bt_vector.getZ(), c_bt_vector.getY());
-#  }
 
-#  inline btVector3 SimulatorToBullet(const CVector3& c_a_vector) {
-#     return btVector3(c_a_vector.GetX(), c_a_vector.GetZ(), -c_a_vector.GetY());
-#  }
+class Planner:
+    def __init__(self, goal, tolerance=0.5) -> None:
+        self.goal = np.array(goal).reshape([2, 1])
+        self.tolerance = tolerance
 
-#  inline CQuaternion BulletToSimulator(const btQuaternion& c_bt_quaternion) {
-#     return CQuaternion(c_bt_quaternion.getW(), c_bt_quaternion.getX(),
-#                           -c_bt_quaternion.getZ(), c_bt_quaternion.getY());
-#  }
+    def at_goal(self):
+        dist = np.norm(self.goal - self.pos)
+        if dist < self.tolerance:
+            return True
+        return False
 
-#  inline btQuaternion SimulatorToBullet(const CQuaternion& c_a_quaternion) {
-#     return btQuaternion(c_a_quaternion.GetX(), c_a_quaternion.GetZ(),
-#                         -c_a_quaternion.GetY(), c_a_quaternion.GetW());
-#  }
-# ~
+    def get_command(self, pos):
+        self.pos = pos
+        return [0, 0, 0]
 
 
-def _update_controller(controller):
+class StateEstimator:
+    def __init__(self, pos=[0, 0], dt=0.02) -> None:
+        self.pos = np.array(pos).reshape([2, 1])
+        self.mutex = Lock()
+
+    def update(self, orientation, v, dt=0.02):
+        # rotate from the current orientation to the world frame (which should
+        # correspond to the initialization direction)
+        Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
+                        [np.sin(orientation),  np.cos(orientation)]
+                        ])
+        v_world = Rwb @ v[:2].reshape([2, 1]) * dt
+
+        self.mutex.acquire()
+        try:
+            self.pos += v_world
+        finally:
+            self.mutex.release()
+
+    def get_pos(self):
+        self.mutex.acquire()
+        try:
+            return self.pos
+        finally:
+            self.mutex.release()
+
+
+def _update_controller(controller, command):
     # Update speed
-    lin_speed, rot_speed = [0.3, 0.0], 0.0
+    lin_speed, rot_speed = command[:2], command[2]
     controller.set_desired_speed(lin_speed, rot_speed)
     # Update controller moce
     controller.set_controller_mode(ControllerMode.WALK)
@@ -57,21 +82,32 @@ def _update_controller(controller):
 
 def main(argv):
     del argv  # unused
+
+    # Dummy state estimator and planner
+    state_estimator = StateEstimator(controller._conf.timestep)
+    planner = Planner()
+
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
         FLAGS.show_gui,
-        world_class=WORLD_NAME_TO_CLASS_MAP[FLAGS.world])
+        world_class=WORLD_NAME_TO_CLASS_MAP[FLAGS.world],
+        state_estimator=state_estimator)
 
     try:
         start_time = 0  # controller.time_since_reset
         current_time = start_time
+        at_goal = False
 
-        while current_time - start_time < FLAGS.max_time_secs + 10:
+        while not planner.at_goal():
             current_time = controller.time_since_reset
-            time.sleep(0.05)
-            _update_controller(controller)
+            command = planner.get_command(state_estimator.get_pos())
+            _update_controller(controller, command)
+
             if not controller.is_safe:
                 break
+
+            # sleep until next time
+            time.sleep(0.05)
 
     finally:
         controller.set_controller_mode(
