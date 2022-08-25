@@ -124,9 +124,14 @@ def main(argv):
     try:
         start_time = 0  # controller.time_since_reset
         current_time = start_time
-        at_goal = False
+        current_p = state_estimator.get_pos()
+        
+        def is_done(self, goal, robot_pose, delta):
+            dist = np.linalg.norm(robot_pose - goal)
+            done = (dist < delta).all()
+            return done
 
-        while not planner.at_goal():
+        while not is_done(goal, current_p, 0.001):
             # update time
             current_time = time.time()
             dt = current_time - last_time
