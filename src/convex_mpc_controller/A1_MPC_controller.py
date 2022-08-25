@@ -1,5 +1,5 @@
 """Example of MPC controller on A1 robot."""
-from potential_planner import Planner
+# from potential_planner import Planner
 from threading import Lock
 import numpy as np
 from absl import app
@@ -78,7 +78,7 @@ class StateEstimator:
         Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
                         [np.sin(orientation),  np.cos(orientation)]
                         ])
-        return Rwb.T @ v[: 2].reshape([2, 1]) * dt
+        return Rwb.T @ np.array(v[: 2]).reshape([2, 1]) * dt
 
     def update(self, orientation, v, dt=0.02):
         # rotate from the current orientation to the world frame (which should
@@ -113,8 +113,9 @@ def main(argv):
     del argv  # unused
 
     # Dummy state estimator and planner
-    state_estimator = StateEstimator(controller._conf.timestep)
-    planner = Planner(0.2)
+    state_estimator = StateEstimator()
+    # planner = Planner(0.2)
+    fixer = Fixer()
 
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
@@ -127,7 +128,9 @@ def main(argv):
         last_time = current_time
         current_p = state_estimator.get_pos()
 
-        def is_done(self, goal, robot_pose, delta):
+        goal = np.array([1, 1]).reshape([2, 1])
+
+        def is_done(goal, robot_pose, delta):
             dist = np.linalg.norm(robot_pose - goal)
             done = (dist < delta).all()
             return done
@@ -142,8 +145,8 @@ def main(argv):
             current_o = controller._robot.base_orientation_rpy[2]
             current_p = state_estimator.get_pos()
 
-            v = planner.get_command(current_p)
-            o = Fixer.get_fix(current_o=current_o, dt=dt)
+            v = [0.3, 0]  # planner.get_command(current_p)
+            o = fixer.get_fix(current_o, dt)
             v = state_estimator.world2robot(o, v)
             command = [v[0], v[1], o]
             _update_controller(controller, command)
