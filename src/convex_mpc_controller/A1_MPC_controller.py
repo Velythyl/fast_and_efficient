@@ -26,7 +26,7 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
                                stair=stair_world.StairWorld,
                                uneven=uneven_world.UnevenWorld)
 
-
+'''
 class Planner:
     def __init__(self, goal, tolerance=0.5) -> None:
         self.goal = np.array(goal).reshape([2, 1])
@@ -41,7 +41,8 @@ class Planner:
     def get_command(self, pos):
         self.pos = pos
         return [0, 0, 0]
-
+'''
+from potential_planner import Planner
 
 class Fixer:
     def __init__(self) -> None:
@@ -112,7 +113,7 @@ def main(argv):
 
     # Dummy state estimator and planner
     state_estimator = StateEstimator(controller._conf.timestep)
-    planner = Planner()
+    planner = Planner(0.2)
 
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
@@ -135,7 +136,7 @@ def main(argv):
             current_o = controller._robot.base_orientation_rpy()
             current_p = state_estimator.get_pos()
 
-            v = planner.get_command(current_p)
+            v = planner.potential(current_p)
             o = Fixer.get_fix(current_o=current_o, dt=dt)
             v = state_estimator.world2robot(o, v)
             command = [v[0], v[1], o]
