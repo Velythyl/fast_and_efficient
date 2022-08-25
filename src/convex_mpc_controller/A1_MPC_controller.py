@@ -43,6 +43,23 @@ class Planner:
         return [0, 0, 0]
 
 
+class Fixer:
+    def __init__(self) -> None:
+        self.last_o = 0.0
+        self.int_o = 0.0
+        self.Kp = 0.1
+        self.Kd = 0.01
+        self.Ki = 0.0
+
+    def get_fix(self, current_o, dt=0.02):
+        err_o = current_o[2] - self.last_o
+        d_o = err_o / dt
+        self.int_o += err_o
+        self.last_o = current_o
+
+        return self.Kp * err_o + self.Kd * d_o + self.Ki * self.int_o
+
+
 class StateEstimator:
     def __init__(self, pos=[0, 0], dt=0.02) -> None:
         self.pos = np.array(pos).reshape([2, 1])
@@ -86,6 +103,7 @@ def main(argv):
     # Dummy state estimator and planner
     state_estimator = StateEstimator(controller._conf.timestep)
     planner = Planner()
+    fixer = Fixer()
 
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
@@ -95,12 +113,21 @@ def main(argv):
 
     try:
         start_time = 0  # controller.time_since_reset
-        current_time = start_time
-        at_goal = False
+        last_time = start_time
 
         while not planner.at_goal():
-            current_time = controller.time_since_reset
-            command = planner.get_command(state_estimator.get_pos())
+            # update time
+            current_time = time.time()
+            dt = current_time - last_time
+            last_time = current_time
+
+            # update position
+            current_o = controller._robot.base_orientation_rpy()
+            current_p = state_estimator.get_pos()
+
+            v = planner.get_command(current_p)
+            o = fixer.get_fix(current_o=current_o, dt=dt)
+            command = [v[0], v[1], o]
             _update_controller(controller, command)
 
             if not controller.is_safe:
