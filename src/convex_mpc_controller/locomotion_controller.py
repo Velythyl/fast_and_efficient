@@ -387,7 +387,7 @@ class LocomotionController(object):
 
             # update state estimate
             if self._pos_estimator is not None:
-                self._pos_estimator.update(self._robot.base_orientation_rpy(), self._robot.base_velocity(), dt)
+                self._pos_estimator.update(self._robot.base_orientation_rpy[2], self._robot.base_velocity, dt)
 
             # store our joint information
             if self._recorder is not None:

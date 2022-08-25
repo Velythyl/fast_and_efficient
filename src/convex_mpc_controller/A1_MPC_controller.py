@@ -28,55 +28,55 @@ WORLD_NAME_TO_CLASS_MAP = dict(plane=plane_world.PlaneWorld,
 
 
 class Planner:
-    def __init__(self, goal, tolerance=0.5) -> None:
+    def __init__(self, pos, goal, tolerance=0.5) -> None:
         self.goal = np.array(goal).reshape([2, 1])
         self.tolerance = tolerance
+        self.pos = pos
 
     def at_goal(self):
-        dist = np.norm(self.goal - self.pos)
+        dist = np.linalg.norm(self.goal - self.pos)
         if dist < self.tolerance:
             return True
         return False
 
     def get_command(self, pos):
         self.pos = pos
-        return [0, 0, 0]
+        return np.array([0.3, 0]).reshape([2, 1])
 
 
 class Fixer:
     def __init__(self) -> None:
         self.last_o = 0.0
         self.int_o = 0.0
-        self.Kp = 0.1
-        self.Kd = 0.01
+        self.Kp = 0.8
+        self.Kd = 0.1
         self.Ki = 0.0
 
     def get_fix(self, current_o, dt=0.02):
-        err_o = current_o[2] - self.last_o
+        err_o = current_o - self.last_o
         d_o = err_o / dt
         self.int_o += err_o
         self.last_o = current_o
 
-        return self.Kp * err_o + self.Kd * d_o + self.Ki * self.int_o
+        return current_o - (self.Kp * err_o + self.Kd * d_o + self.Ki * self.int_o)
 
 
 class StateEstimator:
-    def __init__(self, pos=[0, 0], dt=0.02) -> None:
-        self.pos = np.array(pos).reshape([2, 1])
+    def __init__(self, pos=[0, 0]) -> None:
+        self.pos = np.array(pos).astype(float) .reshape([2, 1])
         self.mutex = Lock()
 
-    def robot2world(orientation, v, dt):
+    def robot2world(self, orientation, v, dt=1.):
         Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
                         [np.sin(orientation),  np.cos(orientation)]
                         ])
-        return Rwb @ v[:2].reshape([2, 1]) * dt
-    
-    def world2robot(orientation, v, dt=1.):
+        return Rwb @ np.array(v[:2]).reshape([2, 1]) * dt
+
+    def world2robot(self, orientation, v, dt=1.):
         Rwb = np.array([[np.cos(orientation), -np.sin(orientation)],
                         [np.sin(orientation),  np.cos(orientation)]
                         ])
-        return Rwb.T @ v[:2].reshape([2, 1]) * dt
-        
+        return Rwb.T @ v[: 2].reshape([2, 1]) * dt
 
     def update(self, orientation, v, dt=0.02):
         # rotate from the current orientation to the world frame (which should
@@ -99,7 +99,7 @@ class StateEstimator:
 
 def _update_controller(controller, command):
     # Update speed
-    lin_speed, rot_speed = command[:2], command[2]
+    lin_speed, rot_speed = command[: 2], command[2]
     controller.set_desired_speed(lin_speed, rot_speed)
     # Update controller moce
     controller.set_controller_mode(ControllerMode.WALK)
@@ -111,18 +111,19 @@ def main(argv):
     del argv  # unused
 
     # Dummy state estimator and planner
-    state_estimator = StateEstimator(controller._conf.timestep)
-    planner = Planner()
+    state_estimator = StateEstimator()
+    planner = Planner(pos=[0, 0], goal=[1, 1])
+    fixer = Fixer()
 
     controller = locomotion_controller.LocomotionController(
         FLAGS.use_real_robot,
         FLAGS.show_gui,
         world_class=WORLD_NAME_TO_CLASS_MAP[FLAGS.world],
-        state_estimator=state_estimator)
+        pos_estimator=state_estimator)
 
     try:
-        start_time = 0  # controller.time_since_reset
-        current_time = start_time
+        current_time = time.time()
+        last_time = current_time
         at_goal = False
 
         while not planner.at_goal():
@@ -132,12 +133,15 @@ def main(argv):
             last_time = current_time
 
             # update position
-            current_o = controller._robot.base_orientation_rpy()
+            current_o = controller._robot.base_orientation_rpy[2]
             current_p = state_estimator.get_pos()
 
             v = planner.get_command(current_p)
-            o = Fixer.get_fix(current_o=current_o, dt=dt)
-            v = state_estimator.world2robot(o, v)
+            v = state_estimator.world2robot(current_o, v)
+            o = fixer.get_fix(current_o, dt)
+
+            print(current_o, o)
+
             command = [v[0], v[1], o]
             _update_controller(controller, command)
 
